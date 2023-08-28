@@ -434,7 +434,10 @@ def enable():
         ("MDSD_USE_LOCAL_PERSISTENCY", "true"),
         ("MDSD_TCMALLOC_RELEASE_FREQ_SEC", "1"),
         ("MONITORING_USE_GENEVA_CONFIG_SERVICE", "false"),
-        ("ENABLE_MCS", "false")
+        ("ENABLE_MCS", "false"),
+        ("customRegionalEndpoint", "https://amcs.monitoring.autonomous.cloud.private"),
+        ("customGlobalEndpoint", "https://amcs.monitoring.autonomous.cloud.private"),
+        ("customResourceEndpoint", "https://monitoring.azs")
     ])
 
     ssl_cert_var_name, ssl_cert_var_value = get_ssl_cert_info('Enable')
