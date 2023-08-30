@@ -44,6 +44,7 @@ FairfaxCloudName    = "azureusgovernmentcloud"
 MooncakeCloudName   = "azurechinacloud"
 USNatCloudName      = "usnat" # EX
 USSecCloudName      = "ussec" # RX
+ArcACloudName       = "azurestackcloud"
 DefaultCloudName    = PublicCloudName # Fallback
 
 ARMDomainMap = {
@@ -51,7 +52,8 @@ ARMDomainMap = {
     FairfaxCloudName:   "management.usgovcloudapi.net",
     MooncakeCloudName:  "management.chinacloudapi.cn",
     USNatCloudName:     "management.azure.eaglex.ic.gov",
-    USSecCloudName:     "management.azure.microsoft.scloud"
+    USSecCloudName:     "management.azure.microsoft.scloud",
+    ArcACloudName:      "armmanagement.autonomous.cloud.private"
 }
 
 
