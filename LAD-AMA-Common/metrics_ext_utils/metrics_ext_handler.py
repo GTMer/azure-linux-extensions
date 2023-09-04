@@ -149,7 +149,7 @@ def remove_metrics_service(is_lad):
 
     return True, "Successfully removed metrics-extensions service and MetricsExtension binary."
 
-def generate_Arc_MSI_token():
+def generate_Arc_MSI_token(resource = "https://ingestion.monitor.azure.com/"):
     """
     This method is used to query the Hyrbid metdadata service of Arc to get the MSI Auth token for the VM and write it to the ME config location
     This is called from the main extension code after config setup is complete
@@ -171,7 +171,7 @@ def generate_Arc_MSI_token():
         while retries <= max_retries:
             arc_endpoint = metrics_utils.get_arc_endpoint()
             try:
-                msiauthurl = arc_endpoint + "/metadata/identity/oauth2/token?api-version=2019-11-01&resource=https://ingestion.monitor.azure.com/"
+                msiauthurl = arc_endpoint + "/metadata/identity/oauth2/token?api-version=2019-11-01&resource=" + resource
                 req = urllib.request.Request(msiauthurl, headers={'Metadata':'true'})
                 res = urllib.request.urlopen(req)
             except:
@@ -283,6 +283,64 @@ def generate_MSI_token(identifier_name = '', identifier_value = ''):
             return False, expiry_epoch_time, log_messages
 
         return True, expiry_epoch_time, log_messages
+
+def get_ArcA_MSI_token(resource = "https://monitoring.azs"):
+    """
+    This method is used to query the Hyrbid metdadata service of ArcA to get the MSI Auth token for the VM
+    """
+    token_string = ""
+    log_messages = ""
+    retries = 1
+    max_retries = 3
+    sleep_time = 5
+
+    try:
+        data = None
+        while retries <= max_retries:
+            arc_endpoint = metrics_utils.get_arc_endpoint()
+            try:
+                msiauthurl = arc_endpoint + "/metadata/identity/oauth2/token?api-version=2019-11-01&resource=" + resource
+                req = urllib.request.Request(msiauthurl, headers={'Metadata':'true'})
+                res = urllib.request.urlopen(req)
+            except:
+                # The above request is expected to fail and add a key to the path
+                authkey_dir = "/var/opt/azcmagent/tokens/"
+                if not os.path.exists(authkey_dir):
+                    log_messages += "Unable to find the auth key file at {0} returned from the arc msi auth request.".format(authkey_dir)
+                    return False, token_string, log_messages
+                keys_dir = []
+                for filename in os.listdir(authkey_dir):
+                    keys_dir.append(filename)
+
+                authkey_path = authkey_dir + keys_dir[-1]
+                auth = "basic "
+                with open(authkey_path, "r") as f:
+                    key = f.read()
+                auth += key
+                req = urllib.request.Request(msiauthurl, headers={'Metadata':'true', 'authorization':auth})
+                res = urllib.request.urlopen(req)
+                data = json.loads(res.read().decode('utf-8', 'ignore'))
+
+            if not data or "access_token" not in data:
+                retries += 1
+            else:
+                break
+
+            log_messages += "Failed to fetch MSI Auth url. Retrying in {2} seconds. Retry Count - {0} out of Mmax Retries - {1}\n".format(retries, max_retries, sleep_time)
+            time.sleep(sleep_time)
+
+
+        if retries > max_retries:
+            log_messages += "Unable to fetch a valid MSI auth token for {0}.\n".format(resource)
+            return False, token_string, log_messages
+
+        token_string = data["access_token"]
+
+    except Exception as e:
+        log_messages += "Failed to get msi auth token. Please check if VM's system assigned Identity is enabled Failed with error {0}\n".format(e)
+        return False, token_string, log_messages
+
+    return True, token_string, log_messages
 
 
 def setup_me_service(is_lad, configFolder, monitoringAccount, metrics_ext_bin, me_influx_port, HUtilObj=None):
@@ -464,20 +522,23 @@ def create_metrics_extension_conf(az_resource_id, aad_url):
 } '''
     return conf_json
 
-def create_custom_metrics_conf(mds_gig_endpoint_region):
+def create_custom_metrics_conf(mds_gig_endpoint_region, gig_endpoint = ""):
     """
     Create the metrics extension config
     :param mds_gig_endpoint_region: mds gig endpoint region for the VM
     """
     # Note : mds gig endpoint url is only for 3rd party customers. 1st party endpoint is different
 
+    if not gig_endpoint:
+        gig_endpoint = mds_gig_endpoint_region + ".monitoring.azure.com"
+
     conf_json = '''{
         "version": 17,
         "maxMetricAgeInSeconds": 0,
         "endpointsForClientForking": [],
-        "homeStampGslbHostname": "''' + mds_gig_endpoint_region + '''.monitoring.azure.com",
+        "homeStampGslbHostname": ''' + gig_endpoint + ''',
         "endpointsForClientPublication": [
-            "https://''' + mds_gig_endpoint_region + '''.monitoring.azure.com/api/v1/ingestion/ingest"
+            "https://''' + gig_endpoint + '''/api/v1/ingestion/ingest"
         ]
     } '''
     return conf_json
@@ -565,6 +626,95 @@ def get_imds_values(is_lad):
 
     return az_resource_id, subscription_id, location, az_environment, data
 
+def get_arca_endpoints_from_himds():
+    """
+    Query himds to get required arca endpoints for MetricsExtension config for this connected machine
+    """
+    retries = 1
+    max_retries = 3
+    sleep_time = 5
+    imds_url = "http://localhost:40342/metadata/endpoints?api-version=2019-11-01"
+
+    if metrics_utils.is_arc_installed():
+        imds_url = metrics_utils.get_arc_endpoint()
+        imds_url += "/metadata/endpoints?api-version=2019-11-01"
+
+    data = None
+    while retries <= max_retries:
+
+        # Query imds to get the required information
+        req = urllib.request.Request(imds_url, headers={'Metadata':'true'})
+        res = urllib.request.urlopen(req)
+        data = json.loads(res.read().decode('utf-8', 'ignore'))
+
+        if "dataplaneEndpoints" not in data or "resourceManager" not in data:
+            retries += 1
+        else:
+            break
+
+        time.sleep(sleep_time)
+
+    if retries > max_retries:
+        raise Exception("Unable to find 'dataplaneEndpoints' key in imds query response. Reached max retry limit of - {0} times. Failed to set up ME.".format(max_retries))
+
+    if "arcMonitorControlServiceEndpoint" not in data["dataplaneEndpoints"]:
+        raise Exception("Unable to find 'arcMonitorControlServiceEndpoint' key in imds query response. Failed to set up ME.")
+
+    mcs_endpoint = data["dataplaneEndpoints"]["arcMonitorControlServiceEndpoint"]
+    arm_endpoint = data["resourceManager"]
+
+    return arm_endpoint, mcs_endpoint
+
+def get_arca_ingestion_endpoint_from_mcs(mcs_endpoint, resource_id):
+    """
+    Query himds to get required arca endpoints for MetricsExtension config for this connected machine
+    """
+    retries = 1
+    max_retries = 3
+    sleep_time = 5
+
+    _, mcs_endpoint = get_arca_endpoints_from_himds()
+    az_resource_id, _, _, _, _ = get_imds_values(False)
+    msi_token_fetched, mcs_token, log_messages = get_ArcA_MSI_token()
+    if not msi_token_fetched:
+        raise Exception("Unable to fetch MCS token, error message: " + log_messages)
+    
+
+    mcs_config_query_url = mcs_endpoint + az_resource_id + "/agentConfigurations?platform=windows&includeMeConfig=true&api-version=2022-06-02"
+
+    if not mcs_token.lower().startswith("bearer "):
+        mcs_token += "Bearer "
+
+    data = None
+    while retries <= max_retries:
+
+        # Query imds to get the required information
+        req = urllib.request.Request(mcs_config_query_url, headers={'Metadata':'true', 'Authorization':mcs_token})
+        res = urllib.request.urlopen(req)
+        data = json.loads(res.read().decode('utf-8', 'ignore'))
+
+        if "configurations" not in data:
+            retries += 1
+        else:
+            break
+
+        time.sleep(sleep_time)
+
+    if retries > max_retries:
+        raise Exception("Unable to find 'configurations' key in amcs query response. Reached max retry limit of - {0} times. Failed to set up ME.".format(max_retries))
+
+    if "content" not in data["configurations"][0]:
+        raise Exception("Unable to find 'content' key in amcs query response. Failed to set up ME.")
+    
+    if "channels" not in data["configurations"][0]["content"]:
+        raise Exception("Unable to find 'channels' key in amcs query response. Failed to set up ME.")
+    
+    if "endpoint" not in data["configurations"][0]["content"]["channels"][0]:
+        raise Exception("Unable to find 'endpoint' key in amcs query response. Failed to set up ME.")
+
+    ingestion_endpoint = data["configurations"][0]["content"]["channels"][0]["endpoint"]
+
+    return ingestion_endpoint
 
 def get_arm_domain(az_environment):
     """
@@ -572,7 +722,13 @@ def get_arm_domain(az_environment):
     """
 
     try:
-        domain = ARMDomainMap[az_environment.lower()]
+        if az_environment != ArcACloudName:
+            domain = ARMDomainMap[az_environment.lower()]
+        else:
+            arm_endpoint, _ = get_arca_endpoints_from_himds()
+            arm_endpoint_parsed = urllib.parse.urlparse(arm_endpoint)
+            domain = arm_endpoint_parsed.netloc
+
     except KeyError:
         raise Exception("Unknown cloud environment \"{0}\". Failed to set up ME.".format(az_environment))
 
@@ -654,7 +810,10 @@ def setup_me(is_lad, HUtilObj=None):
     me_conf = create_metrics_extension_conf(az_resource_id, aad_auth_url)
 
     #create custom metrics conf
-    custom_conf = create_custom_metrics_conf(location)
+    if az_environment == ArcACloudName:
+        custom_conf = create_custom_metrics_conf(location, xxhostname)
+    else:
+        custom_conf = create_custom_metrics_conf(location)
 
     #write configs to disk
     logFolder, configFolder = get_handler_vars()
