@@ -222,13 +222,16 @@ def generate_Arc_MSI_token(resource = "https://ingestion.monitor.azure.com/"):
     return True, expiry_epoch_time, log_messages
 
 
-def generate_MSI_token(identifier_name = '', identifier_value = ''):
+def generate_MSI_token(identifier_name = '', identifier_value = '', is_lad = True):
     """
     This method is used to query the metdadata service to get the MSI Auth token for the VM and write it to the ME config location
     This is called from the main extension code after config setup is complete
     """
 
     if metrics_utils.is_arc_installed():
+        _, _, _, az_environment, _ = get_imds_values(is_lad)
+        if az_environment == ArcACloudName:
+            return generate_Arc_MSI_token("https://monitoring.azs")
         return generate_Arc_MSI_token()
     else:
         _, configFolder = get_handler_vars()
@@ -530,15 +533,18 @@ def create_custom_metrics_conf(mds_gig_endpoint_region, gig_endpoint = ""):
     # Note : mds gig endpoint url is only for 3rd party customers. 1st party endpoint is different
 
     if not gig_endpoint:
-        gig_endpoint = mds_gig_endpoint_region + ".monitoring.azure.com"
+        gig_hostname = mds_gig_endpoint_region + ".monitoring.azure.com"
+        gig_endpoint = "https://" + gig_hostname + "/api/v1/ingestion/ingest"
+    else:
+        gig_hostname = urllib.parse.urlparse(gig_endpoint).netloc
 
     conf_json = '''{
         "version": 17,
         "maxMetricAgeInSeconds": 0,
         "endpointsForClientForking": [],
-        "homeStampGslbHostname": ''' + gig_endpoint + ''',
+        "homeStampGslbHostname": "''' + gig_hostname + '''",
         "endpointsForClientPublication": [
-            "https://''' + gig_endpoint + '''/api/v1/ingestion/ingest"
+            "''' + gig_endpoint + '''"
         ]
     } '''
     return conf_json
@@ -665,7 +671,7 @@ def get_arca_endpoints_from_himds():
 
     return arm_endpoint, mcs_endpoint
 
-def get_arca_ingestion_endpoint_from_mcs(mcs_endpoint, resource_id):
+def get_arca_ingestion_endpoint_from_mcs():
     """
     Query himds to get required arca endpoints for MetricsExtension config for this connected machine
     """
@@ -680,10 +686,10 @@ def get_arca_ingestion_endpoint_from_mcs(mcs_endpoint, resource_id):
         raise Exception("Unable to fetch MCS token, error message: " + log_messages)
     
 
-    mcs_config_query_url = mcs_endpoint + az_resource_id + "/agentConfigurations?platform=windows&includeMeConfig=true&api-version=2022-06-02"
+    mcs_config_query_url = mcs_endpoint + az_resource_id + "/agentConfigurations?platform=linux&includeMeConfig=true&api-version=2022-06-02"
 
     if not mcs_token.lower().startswith("bearer "):
-        mcs_token += "Bearer "
+        mcs_token = "Bearer " + mcs_token
 
     data = None
     while retries <= max_retries:
@@ -713,6 +719,12 @@ def get_arca_ingestion_endpoint_from_mcs(mcs_endpoint, resource_id):
         raise Exception("Unable to find 'endpoint' key in amcs query response. Failed to set up ME.")
 
     ingestion_endpoint = data["configurations"][0]["content"]["channels"][0]["endpoint"]
+
+    # try:
+    #     gig_hostname = urllib.parse.urlparse(ingestion_endpoint).netloc
+
+    # except Exception as e:
+    #     raise Exception("Failed to retrieve ingestion host name with Exception='{0}'. ".format(e))
 
     return ingestion_endpoint
 
@@ -811,7 +823,8 @@ def setup_me(is_lad, HUtilObj=None):
 
     #create custom metrics conf
     if az_environment == ArcACloudName:
-        custom_conf = create_custom_metrics_conf(location, xxhostname)
+        ingestion_endpoint = get_arca_ingestion_endpoint_from_mcs
+        custom_conf = create_custom_metrics_conf(location, ingestion_endpoint)
     else:
         custom_conf = create_custom_metrics_conf(location)
 
