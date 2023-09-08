@@ -102,8 +102,8 @@ if sys.version_info < (2,7):
 # Global Variables
 PackagesDirectory = 'packages'
 # The BundleFileName values will be replaced by actual values in the release pipeline. See apply_version.sh.
-BundleFileNameDeb = 'azuremonitoragent.deb'
-BundleFileNameRpm = 'azuremonitoragent.rpm'
+BundleFileNameDeb = 'azuremonitoragent_1.29.9-build.master.1605_x86_64.deb'
+BundleFileNameRpm = 'azuremonitoragent-1.29.9-build.master.1605.x86_64.rpm'
 BundleFileName = ''
 TelegrafBinName = 'telegraf'
 InitialRetrySleepSeconds = 30
@@ -1095,7 +1095,7 @@ def metrics_watcher(hutil_error, hutil_log):
 
                         if generate_token:
                             generate_token = False
-                            msi_token_generated, me_msi_token_expiry_epoch, log_messages = me_handler.generate_MSI_token(identifier_name, identifier_value)
+                            msi_token_generated, me_msi_token_expiry_epoch, log_messages = me_handler.generate_MSI_token(identifier_name, identifier_value, is_lad=False)
                             if msi_token_generated:
                                 hutil_log("Successfully refreshed metrics-extension MSI Auth token.")
                             else:
