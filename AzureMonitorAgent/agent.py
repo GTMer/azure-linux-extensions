@@ -102,8 +102,8 @@ if sys.version_info < (2,7):
 # Global Variables
 PackagesDirectory = 'packages'
 # The BundleFileName values will be replaced by actual values in the release pipeline. See apply_version.sh.
-BundleFileNameDeb = 'azuremonitoragent_1.29.9-build.master.1605_x86_64.deb'
-BundleFileNameRpm = 'azuremonitoragent-1.29.9-build.master.1605.x86_64.rpm'
+BundleFileNameDeb = 'azuremonitoragent.deb'
+BundleFileNameRpm = 'azuremonitoragent.rpm'
 BundleFileName = ''
 TelegrafBinName = 'telegraf'
 InitialRetrySleepSeconds = 30
@@ -434,14 +434,19 @@ def enable():
         ("MDSD_USE_LOCAL_PERSISTENCY", "true"),
         ("MDSD_TCMALLOC_RELEASE_FREQ_SEC", "1"),
         ("MONITORING_USE_GENEVA_CONFIG_SERVICE", "false"),
-        ("ENABLE_MCS", "false"),
-        ("customRegionalEndpoint", "https://amcs.monitoring.autonomous.cloud.private"),
-        ("customGlobalEndpoint", "https://amcs.monitoring.autonomous.cloud.private"),
-        ("customResourceEndpoint", "https://monitoring.azs")
+        ("ENABLE_MCS", "false")
     ])
 
     ssl_cert_var_name, ssl_cert_var_value = get_ssl_cert_info('Enable')
     default_configs[ssl_cert_var_name] = ssl_cert_var_value
+
+    _, _, _, az_environment, _ = me_handler.get_imds_values(is_lad=False)
+    if az_environment.lower() == "azurestackcloud":
+        _, mcs_endpoint = me_handler.get_arca_endpoints_from_himds()
+        default_configs["customRegionalEndpoint"] = mcs_endpoint
+        default_configs["customGlobalEndpoint"] = mcs_endpoint
+        default_configs["customResourceEndpoint"] = "https://monitoring.azs"
+
 
     """
     Decide the mode and configuration. There are two supported configuration schema, mix-and-match between schemas is disallowed:
