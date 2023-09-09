@@ -534,9 +534,10 @@ def create_custom_metrics_conf(mds_gig_endpoint_region, gig_endpoint = ""):
 
     if not gig_endpoint:
         gig_hostname = mds_gig_endpoint_region + ".monitoring.azure.com"
-        gig_endpoint = "https://" + gig_hostname + "/api/v1/ingestion/ingest"
+        gig_ingestion_endpoint = "https://" + gig_hostname + "/api/v1/ingestion/ingest"
     else:
         gig_hostname = urllib.parse.urlparse(gig_endpoint).netloc
+        gig_ingestion_endpoint = gig_endpoint + "/api/v1/ingestion/ingest"
 
     conf_json = '''{
         "version": 17,
@@ -544,7 +545,7 @@ def create_custom_metrics_conf(mds_gig_endpoint_region, gig_endpoint = ""):
         "endpointsForClientForking": [],
         "homeStampGslbHostname": "''' + gig_hostname + '''",
         "endpointsForClientPublication": [
-            "''' + gig_endpoint + '''"
+            "''' + gig_ingestion_endpoint + '''"
         ]
     } '''
     return conf_json
