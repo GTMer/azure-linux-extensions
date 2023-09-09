@@ -230,7 +230,7 @@ def generate_MSI_token(identifier_name = '', identifier_value = '', is_lad = Tru
 
     if metrics_utils.is_arc_installed():
         _, _, _, az_environment, _ = get_imds_values(is_lad)
-        if az_environment == ArcACloudName:
+        if az_environment.lower() == ArcACloudName:
             return generate_Arc_MSI_token("https://monitoring.azs")
         return generate_Arc_MSI_token()
     else:
@@ -735,7 +735,7 @@ def get_arm_domain(az_environment):
     """
 
     try:
-        if az_environment != ArcACloudName:
+        if az_environment.lower() != ArcACloudName:
             domain = ARMDomainMap[az_environment.lower()]
         else:
             arm_endpoint, _ = get_arca_endpoints_from_himds()
@@ -823,7 +823,7 @@ def setup_me(is_lad, HUtilObj=None):
     me_conf = create_metrics_extension_conf(az_resource_id, aad_auth_url)
 
     #create custom metrics conf
-    if az_environment == ArcACloudName:
+    if az_environment.lower() == ArcACloudName:
         ingestion_endpoint = get_arca_ingestion_endpoint_from_mcs
         custom_conf = create_custom_metrics_conf(location, ingestion_endpoint)
     else:
