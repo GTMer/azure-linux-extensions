@@ -824,7 +824,7 @@ def setup_me(is_lad, HUtilObj=None):
 
     #create custom metrics conf
     if az_environment.lower() == ArcACloudName:
-        ingestion_endpoint = get_arca_ingestion_endpoint_from_mcs
+        ingestion_endpoint = get_arca_ingestion_endpoint_from_mcs()
         custom_conf = create_custom_metrics_conf(location, ingestion_endpoint)
     else:
         custom_conf = create_custom_metrics_conf(location)
